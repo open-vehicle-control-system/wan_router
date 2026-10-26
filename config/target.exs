@@ -7,11 +7,9 @@ if config_env() in [:dev, :test, :prod] do
   end
 end
 
-# Use Ringlogger as the logger backend and remove :console.
-# See https://hexdocs.pm/ring_logger/readme.html for more information on
-# configuring ring_logger.
-
-config :logger, backends: [RingLogger]
+# Default to not starting so that the console logger isn't started. See
+# runtime.exs for logger configuration.
+config :logger, :default_handler, false
 
 # Use shoehorn to start the main application. See the shoehorn
 # library documentation for more control in ordering how OTP

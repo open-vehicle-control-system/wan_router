@@ -10,11 +10,10 @@ defmodule WanRouter.MixProject do
       app: @app,
       version: @version,
       elixir: "~> 1.17",
-      archives: [nerves_bootstrap: "~> 1.13"],
+      archives: [nerves_bootstrap: "~> 1.15"],
       start_permanent: Mix.env() == :prod,
       deps: deps(),
-      releases: [{@app, release()}],
-      preferred_cli_target: [run: :host, test: :host]
+      releases: [{@app, release()}]
     ]
   end
 
@@ -26,18 +25,23 @@ defmodule WanRouter.MixProject do
     ]
   end
 
+  def cli do
+    [preferred_targets: [run: :host, test: :host]]
+  end
+
   # Run "mix help deps" to learn about dependencies.
   defp deps do
     [
       # Dependencies for all targets
-      {:nerves, "~> 1.10", runtime: false},
+      {:nerves, "~> 1.13", runtime: false},
       {:shoehorn, "~> 0.9.1"},
+      {:logger_backends, "~> 1.0"},
       {:ring_logger, "~> 0.11.0"},
-      {:toolshed, "~> 0.4.0"},
+      {:toolshed, "~> 0.5.0"},
 
       # Allow Nerves.Runtime on host to support development, testing and CI.
       # See config/host.exs for usage.
-      {:nerves_runtime, "~> 0.13.0"},
+      {:nerves_runtime, "~> 0.13.12"},
       {:vintage_net_bridge, "~> 0.10.0"},
 
       # Dependencies for all targets except :host
@@ -53,7 +57,7 @@ defmodule WanRouter.MixProject do
       # remoteproc) and rmtfs (so the modem can reach its NV partitions)
       # before VintageNet tries to configure wwan0.
       {:ex_rmtfs, github: "mlainez/ex_rmtfs", branch: "main", targets: @all_targets},
-      {:nerves_system_fairphone2, github: "Spin42/nerves_system_fairphone2", tag: "v1.33.8", runtime: false, targets: @all_targets}
+      {:nerves_system_fairphone2, github: "Spin42/nerves_system_fairphone2", tag: "v1.35.3", runtime: false, targets: @all_targets}
     ]
   end
 
@@ -61,7 +65,7 @@ defmodule WanRouter.MixProject do
     [
       overwrite: true,
       # Erlang distribution is not started automatically.
-      # See https://hexdocs.pm/nerves_pack/readme.html#erlang-distribution
+      # See https://nerves-pack.hexdocs.pm/readme.html#erlang-distribution
       cookie: "#{@app}_cookie",
       include_erts: &Nerves.Release.erts/0,
       steps: [&Nerves.Release.init/1, :assemble],
