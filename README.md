@@ -1,6 +1,7 @@
 # WanRouter
 
-Simple NAT router for the Fairphone 2 (Nerves). It shares two upstream
+Simple NAT router for the Citronics Lime, a carrier board for the Fairphone 2
+mainboard (Nerves, `nerves_system_fairphone2`). It shares two upstream
 internet connections — a 4G modem and a WiFi client — with downstream devices
 plugged into Ethernet (`eth0`).
 
@@ -27,8 +28,9 @@ plugged into Ethernet (`eth0`).
 
 ## Prerequisites
 
-Host Elixir/Erlang are pinned in `.tool-versions` (Erlang `28.4.1`, Elixir
-`1.19.5-otp-28`). With [asdf](https://asdf-vm.com) installed:
+Host Elixir/Erlang are pinned in `.tool-versions` (Erlang `29.1.1`, Elixir
+`1.20.4-otp-29`); the target runs Erlang/OTP 29 from `nerves_system_br`
+1.35.3. With [asdf](https://asdf-vm.com) installed:
 
 ```sh
 asdf install
@@ -57,18 +59,45 @@ code (e.g. `"BE"`, `"US"`) for correct WiFi channel support; it defaults to
 export MIX_TARGET=nerves_system_fairphone2
 mix deps.get
 mix firmware
-mix burn   # or flash the resulting .fw to the FP2 userdata partition
+mix firmware.image wan_router.img
 ```
 
 The target system (`Spin42/nerves_system_fairphone2`) is pinned to tag
-`v1.33.8` in `mix.exs`. Nerves downloads the prebuilt artifact published on that
+`v1.35.3` in `mix.exs`. Nerves downloads the prebuilt artifact published on that
 GitHub release rather than compiling Buildroot locally (no `nerves: [compile:
 true]`). The artifact is cached under `~/.local/share/nerves/artifacts/` after
 the first build.
 
+The board boots with U-Boot from the `boot` partition. Build `u-boot-fp2.img`
+with `fairphone2_uboot_defconfig` in
+[`Spin42/buildroot-android`](https://github.com/Spin42/buildroot-android)
+(`docs/fairphone2_uboot.md`), then from the bootloader's fastboot mode:
+
+```sh
+fastboot -s <serial> flash userdata wan_router.img
+fastboot -s <serial> flash boot u-boot-fp2.img
+fastboot -s <serial> reboot
+```
+
+On the Lime, the USB port goes to the carrier's hub without grounding the USB
+ID line, so U-Boot and Linux have to be told to be the USB host. Do it once at
+the U-Boot prompt (serial console, any key during the boot delay):
+
+```
+setenv usb_mode host
+setenv fp2_dtb qcom-msm8974pro-fairphone-fp2-rig.dtb
+saveenv
+boot
+```
+
+`usb_mode=host` makes the system's `boot.scr` start Linux as a USB host, which
+the Ethernet (`eth0`) behind the hub needs. `fp2_dtb` selects the device tree
+for a mainboard without battery or panel. Later updates go over the network
+with `mix upload`.
+
 ## Test plan
 
-- Boot the FP2 and check `VintageNet.info/0`: `wwan0` should reach `:internet`,
+- Boot the board and check `VintageNet.info/0`: `wwan0` should reach `:internet`,
   and `wlan0` should associate and reach `:internet` once credentials are set.
 - Pull the WiFi (or power down the AP) and confirm traffic fails over to the 4G
   uplink; restore it and confirm `wlan0` becomes the preferred route again.
