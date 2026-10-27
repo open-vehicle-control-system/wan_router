@@ -79,21 +79,13 @@ fastboot -s <serial> flash boot u-boot-fp2.img
 fastboot -s <serial> reboot
 ```
 
-On the Lime, the USB port goes to the carrier's hub without grounding the USB
-ID line, so U-Boot and Linux have to be told to be the USB host. Do it once at
-the U-Boot prompt (serial console, any key during the boot delay):
+On the Lime, U-Boot picks the carrier device tree by itself (no panel), and the
+carrier grounds the USB ID line, so Linux is the host of the hub that carries
+the Ethernet port (`eth0`, an SMSC LAN9514) and the STM32. Nothing has to be
+set in U-Boot. Later updates go over the network with `mix upload`.
 
-```
-setenv usb_mode host
-setenv fp2_dtb qcom-msm8974pro-fairphone-fp2-rig.dtb
-saveenv
-boot
-```
-
-`usb_mode=host` makes the system's `boot.scr` start Linux as a USB host, which
-the Ethernet (`eth0`) behind the hub needs. `fp2_dtb` selects the device tree
-for a mainboard without battery or panel. Later updates go over the network
-with `mix upload`.
+The system's `limeboard-mcu` command talks to and reflashes the STM32
+(`cmd("limeboard-mcu status")`); see the `nerves_system_fairphone2` README.
 
 ## Test plan
 
