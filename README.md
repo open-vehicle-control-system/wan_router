@@ -22,9 +22,10 @@ with devices on its WiFi access point and on Ethernet.
 
 ## Prerequisites
 
-Host Elixir/Erlang are pinned in `.tool-versions` (Erlang `29.1.1`, Elixir
-`1.20.4-otp-29`); the target runs Erlang/OTP 29 from `nerves_system_br`
-1.35.3. With [asdf](https://asdf-vm.com) installed:
+Host tools are pinned in `.tool-versions` (Erlang `29.1.1`, Elixir
+`1.20.4-otp-29`, and `fwup` `1.16.0`, which `mix firmware` needs); the target
+runs Erlang/OTP 29 from `nerves_system_br` 1.35.3. With
+[asdf](https://asdf-vm.com) installed:
 
 ```sh
 asdf install
