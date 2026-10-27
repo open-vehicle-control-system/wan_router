@@ -1,30 +1,24 @@
 # WanRouter
 
-Simple NAT router for the Citronics Lime, a carrier board for the Fairphone 2
-mainboard (Nerves, `nerves_system_fairphone2`). It shares two upstream
-internet connections — a 4G modem and a WiFi client — with downstream devices
-plugged into Ethernet (`eth0`).
+4G hotspot for the Citronics Lime, a carrier board for the Fairphone 2
+mainboard (Nerves, `nerves_system_fairphone2`). It shares its 4G connection
+with devices on its WiFi access point and on Ethernet.
 
 - **WAN — `wwan0`**: in-kernel QMI modem, driven by
   [`vintage_net_qmi`](https://github.com/mlainez/vintage_net_qmi) on top of
   [`qmi`](https://github.com/mlainez/qmi). APN is hardcoded to `simbase` in
-  `config/target.exs` — change `service_providers` for other carriers.
-- **WAN — `wlan0`**: WiFi client (station) that joins an upstream access point
-  via DHCP. Credentials come from `config/.env.exs` (gitignored); see
-  [WiFi setup](#wifi-setup). If no credentials are set, `wlan0` is left
-  unconfigured and the device runs cellular-only.
-- **WAN priority**: `WanRouter.RouteMetric` (wired in via vintage_net's
-  `:route_metric_fun`) guarantees WiFi (`wlan0`) outranks the 4G modem
-  (`wwan0`) at every connectivity tier, so `wwan0` is failover only. Ordering
-  stays internet-before-LAN, so traffic still falls over to 4G if the WiFi AP
-  loses its own upstream.
-- **LAN — `eth0`**: static `10.0.1.42/24`. This is the gateway address LAN
-  clients use. There is **no DHCP server yet** (see the TODO in
-  `config/target.exs`), so clients must be configured statically — e.g. address
-  `10.0.1.x/24`, gateway/DNS `10.0.1.42`.
+  `config/target.exs` — change `service_providers` for other carriers. The
+  Lime needs an external cellular antenna.
+- **LAN — `wlan0`**: WiFi access point (WPA2-PSK, 2.4 GHz channel 6) on
+  `10.0.2.1/24`; see [WiFi](#wifi) for its SSID and passphrase. A DHCP server
+  hands out
+  `10.0.2.10`–`10.0.2.100` with gateway `10.0.2.1` and DNS `1.1.1.1`,
+  `8.8.8.8` (the router runs no DNS forwarder).
+- **LAN — `eth0`**: static `10.0.1.42/24`, without DHCP. Clients there use a
+  fixed address, e.g. `10.0.1.x/24` with gateway `10.0.1.42` and a public DNS
+  server.
 - **NAT**: `WanRouter.WanForward` enables `ip_forward` and adds a `MASQUERADE`
-  rule plus a stateful `INPUT` accept for return traffic on **both** WAN
-  interfaces (`wwan0` and `wlan0`).
+  rule plus a stateful `INPUT` accept for return traffic on `wwan0`.
 
 ## Prerequisites
 
@@ -39,19 +33,20 @@ asdf install
 The host Elixir and Erlang must share the same major OTP version, or Mix will
 refuse to build.
 
-## WiFi setup
+## WiFi
 
-To enable the `wlan0` WAN, provide the upstream network's credentials in a
-gitignored env file (the passphrase never lands in git):
+The access point SSID and passphrase stay out of git: put them in a gitignored
+env file before building the firmware (the build stops if one is missing):
 
 ```sh
 cp config/.env.exs.example config/.env.exs
-# edit config/.env.exs and set WIFI_SSID / WIFI_PSK (WPA2/WPA3 personal)
+# edit config/.env.exs and set WIFI_AP_SSID and WIFI_AP_PSK (8 to 63 characters)
 ```
 
-Also set `regulatory_domain` in `config/target.exs` to your 2-letter country
-code (e.g. `"BE"`, `"US"`) for correct WiFi channel support; it defaults to
-`"00"` (world).
+The other access point settings are in `config/target.exs`. Set `regulatory_domain`
+there to your 2-letter country code (e.g. `"BE"`, `"US"`) for correct WiFi
+channel support; it defaults to `"00"` (world), which is why the access point
+stays on 2.4 GHz channel 6.
 
 ## Build & flash
 
@@ -89,10 +84,11 @@ The system's `limeboard-mcu` command talks to and reflashes the STM32
 
 ## Test plan
 
-- Boot the board and check `VintageNet.info/0`: `wwan0` should reach `:internet`,
-  and `wlan0` should associate and reach `:internet` once credentials are set.
-- Pull the WiFi (or power down the AP) and confirm traffic fails over to the 4G
-  uplink; restore it and confirm `wlan0` becomes the preferred route again.
-- Statically configure a laptop on `eth0` (address `10.0.1.x/24`, gateway/DNS
-  `10.0.1.42`) and confirm it routes external traffic out a WAN.
-- `ssh ovcs-4g-gw.local` for an IEx prompt.
+- Boot the board and check `VintageNet.info/0`: `wwan0` should reach
+  `:internet`, and `wlan0` should be configured as an access point (`:lan`).
+- Join the access point from a phone or laptop: it should get a `10.0.2.x`
+  address and reach the internet through 4G.
+- Statically configure a laptop on `eth0` (address `10.0.1.x/24`, gateway
+  `10.0.1.42`, DNS `1.1.1.1`) and confirm it reaches the internet through 4G.
+- `ssh 10.0.1.42` (from `eth0`) or `ssh 10.0.2.1` (from WiFi) for an IEx
+  prompt.

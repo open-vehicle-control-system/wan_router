@@ -12,11 +12,9 @@ defmodule WanRouter.WanForward do
     {:ok, %{}}
   end
 
-  # Upstream (WAN) interfaces. LAN clients on eth0 are NAT'd out whichever of
-  # these the kernel routes the traffic to (vintage_net manages the default
-  # route priority). Masquerading per output interface works regardless of
-  # which WAN is currently the default route.
-  @wan_interfaces ["wwan0", "wlan0"]
+  # Upstream (WAN) interfaces. LAN clients on eth0 and on the wlan0 access
+  # point are NAT'd out of them.
+  @wan_interfaces ["wwan0"]
 
   defp run_setup_commands do
     Logger.info("Running boot setup commands")

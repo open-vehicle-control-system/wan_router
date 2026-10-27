@@ -1,12 +1,5 @@
 import Config
 
-if config_env() in [:dev, :test, :prod] do
-  for path <- [".env.exs", ".env.#{config_env()}.exs"] do
-    path = Path.join(__DIR__, "..") |> Path.join("config") |> Path.join(path) |> Path.expand()
-    if File.exists?(path), do: import_config(path)
-  end
-end
-
 # Default to not starting so that the console logger isn't started. See
 # runtime.exs for logger configuration.
 config :logger, :default_handler, false
@@ -45,79 +38,96 @@ config :nerves_ssh,
   authorized_keys: Enum.map(keys, &File.read!/1)
 
 config :nerves, :erlinit,
-    update_clock: true,
-    ctty: "ttyMSM0"
+  update_clock: true,
+  ctty: "ttyMSM0"
 
-# Configure the network using vintage_net.
+# Configure the network using vintage_net: a 4G hotspot.
 #
-# WAN side: TWO upstream interfaces, both providing internet and NAT'd to the
-# LAN (see WanRouter.WanForward):
-#   * wwan0 — the in-kernel QMI modem on the Fairphone 2. APN "simbase" is
-#     hardcoded; tweak service_providers for other carriers.
-#   * wlan0 — WiFi client (station) joining an upstream access point. Credentials
-#     come from config/.env.exs (gitignored), which sets WIFI_SSID / WIFI_PSK.
-#     vintage_net's default route prioritization prefers WiFi (wlan0) over mobile
-#     (wwan0), so cellular acts as failover when WiFi is down.
+# WAN: wwan0, the in-kernel QMI modem, is the only uplink. APN "simbase" is
+# hardcoded; tweak service_providers for other carriers. Clients on both LAN
+# sides are NAT'd out of it (see WanRouter.WanForward).
 #
-# LAN side: eth0 is the downstream interface, static 10.0.1.42/24.
+# LAN:
+#   * wlan0 is an access point (WPA2-PSK, 2.4 GHz channel 6) on 10.0.2.1/24
+#     and hands out 10.0.2.10-10.0.2.100 by DHCP, with public DNS servers:
+#     the router runs no DNS forwarder.
+#   * eth0 is static 10.0.1.42/24, without DHCP: clients there use a fixed
+#     address, gateway 10.0.1.42.
 #
 # Update regulatory_domain to your 2-letter country code E.g., "US"
 #
 # See https://github.com/nerves-networking/vintage_net for more information
 
-# Secondary WAN over WiFi. Built from env vars set by config/.env.exs so the
-# passphrase never lands in git. If they're absent, wlan0 is left unconfigured
-# and the firmware still builds (cellular-only).
-wlan_wan =
-  case {System.get_env("WIFI_SSID"), System.get_env("WIFI_PSK")} do
-    {ssid, psk} when is_binary(ssid) and ssid != "" and is_binary(psk) and psk != "" ->
-      [
-        {"wlan0",
-         %{
-           type: VintageNetWiFi,
-           vintage_net_wifi: %{
-             networks: [%{key_mgmt: :wpa_psk, ssid: ssid, psk: psk}]
-           },
-           ipv4: %{method: :dhcp}
-         }}
-      ]
+# The access point SSID and passphrase stay out of git: config/.env.exs
+# (gitignored, see config/.env.exs.example) sets WIFI_AP_SSID and WIFI_AP_PSK.
+env_file = Path.expand(".env.exs", __DIR__)
+if File.exists?(env_file), do: import_config(env_file)
 
-    _ ->
-      []
+[wifi_ap_ssid, wifi_ap_psk] =
+  for name <- ["WIFI_AP_SSID", "WIFI_AP_PSK"] do
+    System.get_env(name) ||
+      Mix.raise("""
+      #{name} is not set. The WiFi access point needs an SSID and a WPA2
+      passphrase: copy config/.env.exs.example to config/.env.exs and set them
+      there.
+      """)
   end
 
 config :vintage_net,
-  # Guarantee wlan0 (WiFi) is preferred over wwan0 (4G) for the default route;
-  # 4G is failover only. See WanRouter.RouteMetric.
-  route_metric_fun: {WanRouter.RouteMetric, :compute, 2},
   regulatory_domain: "00",
-  config:
-    [
-      {"usb0", %{type: VintageNetDirect}},
-      {"eth0",
-       %{
-         type: VintageNetEthernet,
-         ipv4: %{
-           method: :static,
-           address: "10.0.1.42",
-           prefix_length: 24
+  config: [
+    {"usb0", %{type: VintageNetDirect}},
+    {"eth0",
+     %{
+       type: VintageNetEthernet,
+       ipv4: %{
+         method: :static,
+         address: "10.0.1.42",
+         prefix_length: 24
+       }
+     }},
+    {"wlan0",
+     %{
+       type: VintageNetWiFi,
+       vintage_net_wifi: %{
+         networks: [
+           %{
+             mode: :ap,
+             ssid: wifi_ap_ssid,
+             key_mgmt: :wpa_psk,
+             psk: wifi_ap_psk,
+             frequency: 2437
+           }
+         ]
+       },
+       ipv4: %{
+         method: :static,
+         address: "10.0.2.1",
+         prefix_length: 24
+       },
+       dhcpd: %{
+         start: "10.0.2.10",
+         end: "10.0.2.100",
+         options: %{
+           dns: ["1.1.1.1", "8.8.8.8"],
+           subnet: "255.255.255.0",
+           router: ["10.0.2.1"]
          }
-         # TODO: LAN clients won't get a lease until we run a DHCP server
-         # ourselves (VintageNet has no server side). Plan: spawn busybox
-         # udhcpd or dnsmasq from a WanRouter child process bound to eth0.
-       }},
-      {"wwan0", %{
-        type: VintageNetQMI,
-        vintage_net_qmi: %{
-          ip_method: :qmi_profile,
-          device_path: "/dev/wwan0qmi0",
-          provision_uim: true,
-          service_providers: [
-            %{apn: "simbase", auth_method: :none, pdp_type: :ipv4, roaming_allowed?: true}
-          ]
-        }
-      }}
-    ] ++ wlan_wan
+       }
+     }},
+    {"wwan0",
+     %{
+       type: VintageNetQMI,
+       vintage_net_qmi: %{
+         ip_method: :qmi_profile,
+         device_path: "/dev/wwan0qmi0",
+         provision_uim: true,
+         service_providers: [
+           %{apn: "simbase", auth_method: :none, pdp_type: :ipv4, roaming_allowed?: true}
+         ]
+       }
+     }}
+  ]
 
 config :mdns_lite,
   # The `hosts` key specifies what hostnames mdns_lite advertises.  `:hostname`
@@ -129,7 +139,6 @@ config :mdns_lite,
   # unpredictable behavior.
 
   hosts: [:hostname, "ovcs1-router"],
-
   ttl: 120,
 
   # Advertise the following services over mDNS.

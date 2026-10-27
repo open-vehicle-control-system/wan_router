@@ -19,9 +19,3 @@ config :nerves_runtime,
        "a.nerves_fw_platform" => "host",
        "a.nerves_fw_version" => "0.0.0"
      }}
-
-# vintage_net runs on the host only so that WanRouter.RouteMetric compiles;
-# keep it away from the host's network configuration.
-config :vintage_net,
-  resolvconf: "/dev/null",
-  persistence: VintageNet.Persistence.Null
